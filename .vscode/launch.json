@@ -2,29 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debuger języka Python: FastAPI",
+            "name": "Python: Google Cloud Function",
             "type": "debugpy",
             "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "main:app",
-                "--reload"
-            ],
-            "jinja": true
-        },
-        {
-            "name": "Launch Chrome",
-            "request": "launch",
-            "type": "chrome",
-            "url": "http://localhost:8080",
-            "webRoot": "${workspaceFolder}"
-        },
-        {
-            "name": "Attach to Edge",
-            "port": 9222,
-            "request": "attach",
-            "type": "msedge",
-            "webRoot": "${workspaceFolder}"
+            "program": "main.py",
+            "args": [],
+            "justMyCode": true
         }
     ]
 }
