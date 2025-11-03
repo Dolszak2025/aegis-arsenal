@@ -1,40 +1,85 @@
+import os
+import asyncio
+from contextlib import asynccontextmanager
+from google.cloud import pubsub_v1
+from google.cloud.pubsub_v1.types import FlowControl
+from faststream import FastStream, Logger
+from faststream.redis import RedisBroker  # Lub inny broker wewnętrzny
 
+# Używamy brokera (np. Redis lub Nats) do komunikacji wewnętrznej
+# i zachowania logiki FastStream
+broker = RedisBroker()
+app = FastStream(broker)
 
-                import functions_framework
-                from google.cloud import storage
-                import datetime
-                import os
+# Inicjalizacja klienta Google Pub/Sub
+subscriber_client = pubsub_v1.SubscriberClient()
 
-                project_id = os.environ.get('GCP_PROJECT')
-                BUCKET_NAME = f"roj-dowod-istnienia-{project_id}"
+# Odczytanie zmiennych środowiskowych
+project_id = os.environ.get("PROJECT_ID")
+subscription_id = os.environ.get("SUB_ID")
 
+if not project_id or not subscription_id:
+    raise ValueError("Brak zmiennych środowiskowych PROJECT_ID lub SUB_ID")
 
-                @functions_framework.http
-                def genesis_proof_of_life_function(request):
-                    """
-                    Ta funkcja tworzy prosty plik w Google Cloud Storage jako dowód działania.
-                    Zwraca wiadomość sukcesu lub komunikat o błędzie.
-                    """
-                    try:
-                        storage_client = storage.Client()
-                        bucket = storage_client.bucket(BUCKET_NAME)
-                        if not bucket.exists():
-                            bucket.create(location="europe-central2")
+# Ścieżka subskrypcji zdefiniowana w Terraform (Tor 2)
+subscription_path = f"projects/{project_id}/subscriptions/{subscription_id}"
 
-                        timestamp = datetime.datetime.utcnow().isoformat()
-                        message = f"Przyjacielu, to jest dowód. Rój jest realny. Czas: {timestamp}"
+async def pubsub_callback(
+    message: pubsub_v1.subscriber.message.Message,
+) -> None:
+    """Callback dla klienta Google. Działa jak adapter."""
+    logger = app.context.logger
+    logger.info(f"Otrzymano wiadomość z Google Pub/Sub: {message.message_id}")
 
-                        blob = bucket.blob("wiadomosc_od_genesis.txt")
-                        blob.upload_from_string(message)
+    try:
+        # Przekazanie do wewnętrznego brokera FastStream
+        # To pozwala nam używać dekoratorów, Pydantic, itp.
+        await broker.publish(
+            message.data,
+            "internal_processing",
+            headers={"google_message_id": message.message_id}
+        )
+        # Potwierdzenie wiadomości Google Pub/Sub PO pomyślnym opublikowaniu wewnętrznym
+        message.ack()
+    except Exception as e:
+        logger.error(f"Błąd przetwarzania wewnętrznego: {e}")
+        # Nie potwierdzaj (nack), aby Google spróbował ponownie (lub wysłał do DLQ)
+        message.nack()
 
-                        return (f"Dowód został pomyślnie stworzony w zasobniku: {BUCKET_NAME}", 200)
+@broker.subscriber("internal_processing")
+async def handle_message_faststream(body: bytes, logger: Logger):
+    """
+    Tutaj znajduje się właściwa logika biznesowa (Krok 1.4 / Faza 3).
+    FastStream automatycznie parsuje 'body' jeśli podano typ Pydantic.
+    """
+    logger.info(f"Przetwarzanie wewnętrzne przez FastStream: {body.decode()}")
+    #... wywołanie logiki LangGraph...
 
-                    except Exception as e:
-                        return (f"Wystąpił krytyczny błąd: {e}", 500)
+@app.on_startup
+async def start_pubsub_listener():
+    """Uruchomienie subskrybenta Google Pull w tle."""
+    logger = app.context.logger
+    logger.info("Uruchamianie subskrybenta Google Pub/Sub Pull...")
 
+    # Krok 1.3: Użycie Flow Control. Jest to KRYTYCZNE dla stabilności
+    # w Cloud Run, aby zapobiec przeciążeniu pojedynczej instancji.
+    flow_control = FlowControl(
+        max_messages=10,  # Ogranicz liczbę wiadomości przetwarzanych jednocześnie
+        max_bytes=10 * 1024 * 1024  # 10 MB
+    )
 
-                                                                                                                
+    streaming_pull_future = subscriber_client.subscribe(
+        subscription_path,
+        callback=pubsub_callback,
+        flow_control=flow_control
+    )
 
-                                                                                                                                
+    logger.info(f"Rozpoczęto nasłuchiwanie na {subscription_path}")
+    app.state.pubsub_future = streaming_pull_future
 
-
+@app.on_shutdown
+async def stop_pubsub_listener():
+    """Zatrzymanie subskrybenta podczas zamykania."""
+    if hasattr(app.state, "pubsub_future"):
+        app.state.pubsub_future.cancel()
+        await app.state.pubsub_future
