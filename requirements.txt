@@ -1,3 +1,8 @@
 faststream
 redis
 google-cloud-pubsub
+psycopg[pool]
+langchain-postgres
+opentelemetry-sdk
+opentelemetry-instrumentation-faststream
+google-cloud-logging
