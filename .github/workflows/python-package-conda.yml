@@ -61,6 +61,6 @@ jobs:
         gcloud run deploy aegis-dashboard \
           --source=dashboard \
           --platform managed \
-          --region europe-central2 \
+          --region europe-west1 \
           --allow-unauthenticated \
           --set-env-vars SUPABASE_CONN_STRING=${{ secrets.SUPABASE_CONN_STRING }}
