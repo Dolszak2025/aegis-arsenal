@@ -1,39 +1,81 @@
 # Plik: logos_orchestrator/main.py
-# Cel: Główny plik aplikacji, integrujący Telemetrię i MCP
-
-from fastapi import FastAPI
 import logging
+from fastapi import FastAPI
 import uvicorn
 
-# Importujemy nasze moduły (telemetry.py powinien istnieć w tym pakiecie)
-try:
-    from .telemetry import setup_telemetry  # optional
-except Exception:
-    def setup_telemetry(app):
-        # fallback: noop
-        return
-
-from .mcp_server import router as mcp_router
-
-# Konfiguracja podstawowego loggingu
-logging.basicConfig(level=logging.INFO)
+# Konfiguracja logowania na samym początku
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger("logos_orchestrator")
 
-app = FastAPI()
+# ==========================================
+# 1. IMPORTY MODUŁÓW (SOFT LOADING)
+# ==========================================
 
-# --- AKTYWACJA MODUŁÓW ---
+# Telemetria (opcjonalna)
 try:
+    from .telemetry import setup_telemetry
+except ImportError:
+    logger.warning("⚠️ Moduł 'telemetry.py' nie został znaleziony. Uruchamianie w trybie bez telemetrii.")
+    def setup_telemetry(app):
+        pass # No-op
+
+# MCP Server (Kluczowy moduł)
+mcp_router = None
+try:
+    from .mcp_server import router as mcp_router
+except ImportError as e:
+    logger.error(f"❌ Błąd importu 'mcp_server': {}. Funkcje MCP będą niedostępne.")
+
+# ==========================================
+# 2. INICJALIZACJA APLIKACJI
+# ==========================================
+
+app = FastAPI(title="Logos Orchestrator", version="1.0.0")
+
+# Aktywacja modułów
+try:
+    # 1. Uruchomienie telemetrii (np. OpenTelemetry / Prometheus)
     setup_telemetry(app)
-    app.include_router(mcp_router)
-    logger.info("System 'Zmysłów' (Telemetry) i 'Połączenie' (MCP) zostały pomyślnie załadowane.")
+    
+    # 2. Rejestracja routera MCP
+    if mcp_router:
+        app.include_router(mcp_router)
+        logger.info("✅ Podsystem MCP (Model Context Protocol) podłączony.")
+    else:
+        logger.warning("⚠️ Podsystem MCP nie został załadowany (brak modułu).")
+
+    logger.info("🚀 System 'Zmysłów' i 'Połączenie' zainicjalizowane.")
+
 except Exception as e:
-    logger.critical(f"KRYTYCZNY BŁĄD podczas inicjalizacji modułów: {e}", exc_info=True)
+    # Critical - jeśli tu coś padnie, aplikacja jest w stanie niestabilnym
+    logger.critical(f"🔥 KRYTYCZNY BŁĄD podczas startu orkiestratora: {}", exc_info=True)
 
 
 @app.get("/")
 def read_root():
-    return {"message": "logos-orchestrator jest aktywny. Telemetria i MCP są załadowane."}
+    status = {
+        "system": "Logos Orchestrator",
+        "status": "active",
+        "modules": {
+            "telemetry": "loaded", # Uproszczenie
+            "mcp": "active" if mcp_router else "inactive"
+        }
+    }
+    return status
 
-
+# ==========================================
+# 3. ENTRY POINT
+# ==========================================
 if __name__ == "__main__":
-    uvicorn.run("logos_orchestrator.main:app", host="0.0.0.0", port=8000, reload=False)
+    # UWAGA: Używamy importu stringowego "logos_orchestrator.main:app"
+    # To wymaga uruchomienia jako moduł (python -m ...)
+    uvicorn.run(
+        "logos_orchestrator.main:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=False, # Zmień na True podczas developmentu
+        log_level="info"
+    )
