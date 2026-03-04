@@ -1,0 +1,25 @@
+name: Kompilator Prezentacji Loft Klima (Marp)
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v3
+      - name: Instalacja Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Kompilacja PDF (Marp)
+        run: npx @marp-team/marp-cli@latest prezentacja_loft.md --pdf --allow-local-files -o prezentacja_loft.pdf
+      - name: Aktualizacja repozytorium
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add prezentacja_loft.pdf
+          git commit -m "Automatyczna kompilacja prezentacji PDF [skip ci]" || echo "Brak zmian w PDF"
+          git push
