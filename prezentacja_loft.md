@@ -26,5 +26,10 @@ style: |
 
 ---
 
+## visual_design
+TEST WIDŻETÓW: Super klimatyzatory
+
+---
+
 # Zapraszamy do kontaktu
 ## biuro@loftklima.pl
