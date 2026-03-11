@@ -1,0 +1,19 @@
+{
+  "name": "aegis-arsenal",
+  "version": "1.0.0",
+  "description": "FastAPI application with Vercel Speed Insights",
+  "scripts": {
+    "dev": "uvicorn main:app --reload",
+    "start": "uvicorn main:app --host 0.0.0.0 --port 8000"
+  },
+  "dependencies": {
+    "@vercel/speed-insights": "^1.0.12"
+  },
+  "keywords": [
+    "fastapi",
+    "vercel",
+    "speed-insights"
+  ],
+  "author": "",
+  "license": "MIT"
+}
