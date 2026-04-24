@@ -14,6 +14,7 @@ A FastAPI application with Vercel Speed Insights integration for real-time perfo
 ### Prerequisites
 
 - Python 3.9 or higher
+- Python 3.12 or higher
 - Node.js 18 or higher (for Speed Insights package)
 
 ### Setup
